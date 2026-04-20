@@ -2,60 +2,44 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision import transforms, datasets
+from torchvision import transforms, datasets, models
 import os
 
-IMG_SIZE = 300
 NUM_CLASSES = 29
 BATCH_SIZE = 32
 EPOCHS = 20
-LR = 1e-3
-HIDDEN_SIZE = 128
-NUM_LAYERS = 2
+LR = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
-if DEVICE.type == "cuda":
-    print("GPU name:", torch.cuda.get_device_name(0))
 
-train_dir = r"D:\Sign_language_dataset\asl_alphabet_train_300"
+train_dir = r"D:\Sign_language_dataset\asl_alphabet_train_30"
 test_dir  = r"D:\Sign_language_dataset\asl_alphabet_test"
 
-transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
+transform_train = transforms.Compose([
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
 ])
 
-train_dataset = datasets.ImageFolder(root=train_dir, transform=transform)
-test_dataset = datasets.ImageFolder(root=test_dir, transform=transform)
+transform_test = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
+])
+
+train_dataset = datasets.ImageFolder(root=train_dir, transform=transform_train)
+test_dataset = datasets.ImageFolder(root=test_dir, transform=transform_test)
 
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-class LSTMClassifier(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, num_classes):
-        super(LSTMClassifier, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
+model = models.alexnet(weights="IMAGENET1K_V1")
+model.classifier[6] = nn.Linear(4096, NUM_CLASSES)
 
-        self.lstm = nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True
-        )
-        self.fc = nn.Linear(hidden_size, num_classes)
+model = model.to(DEVICE)
 
-    def forward(self, x):
-        x = x.permute(0, 2, 3, 1)
-        x = x.reshape(x.size(0), IMG_SIZE, -1)
-
-        out, _ = self.lstm(x)
-        out = out[:, -1, :]
-        out = self.fc(out)
-        return out
-
-input_size = 3 * IMG_SIZE
-model = LSTMClassifier(input_size, HIDDEN_SIZE, NUM_LAYERS, NUM_CLASSES).to(DEVICE)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LR)
 
@@ -87,3 +71,7 @@ with torch.no_grad():
         correct += (predicted == labels).sum().item()
 
 print(f"Test Accuracy: {100 * correct / total:.2f}%")
+
+torch.save(model.state_dict(), "alexnet_28class.pth")
+print("Model saved to alexnet_28class.pth")
+
